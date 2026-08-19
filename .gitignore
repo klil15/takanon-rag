@@ -1,0 +1,18 @@
+# סודות — לעולם לא מעלים לענן / ל-git
+.env
+.env.*
+!.env.example
+
+# הסודות של Streamlit — אותו כלל בדיוק
+.streamlit/secrets.toml
+
+# סביבת פייתון
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+
+# מערכת הפעלה / עורך
+.DS_Store
+.idea/
+.vscode/

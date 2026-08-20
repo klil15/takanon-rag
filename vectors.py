@@ -26,6 +26,7 @@ DIMENSION = 768
 METRIC = "cosine"
 CLOUD = "aws"
 REGION = "us-east-1"
+NAMESPACE = ""
 
 # How long to wait for a freshly created serverless index to become ready
 READY_TIMEOUT = 60.0
@@ -99,9 +100,30 @@ def ensure_index() -> IndexInfo:
     )
 
 
-def _index():
+def describe_index() -> IndexInfo:
+    """
+    Describes the existing index without creating one.
+
+    Unlike ensure_index(), this never creates an index — a caller that must
+    not create one (add_to_pinecone.py) uses this instead. Raises if the
+    index does not exist.
+    """
+    described = get_client().describe_index(index_name())
+    return IndexInfo(
+        dimension=described.dimension,
+        metric=described.metric,
+        host=described.host,
+    )
+
+
+def get_index():
+    """Returns the Pinecone Index client for the existing index."""
     described = get_client().describe_index(index_name())
     return get_client().Index(host=described.host)
+
+
+def _index():
+    return get_index()
 
 
 def count_vectors() -> int:

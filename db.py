@@ -46,9 +46,16 @@ CREATE TABLE IF NOT EXISTS {TABLE} (
 ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS chunk_index INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS summary     TEXT;
 ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS page        INTEGER;
+-- When this row's text was last embedded into Pinecone. NULL means never.
+-- A row needing (re-)embedding is one where embedded_at IS NULL OR
+-- updated_at > embedded_at — the existing updated_at bump on every edit is
+-- enough to detect a changed row, so no extra "dirty" bookkeeping column
+-- is needed on top of this one.
+ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS embedded_at TIMESTAMPTZ;
 ALTER TABLE {TABLE} DROP CONSTRAINT IF EXISTS {TABLE}_section_number_key;
 
 CREATE INDEX IF NOT EXISTS {TABLE}_chapter_idx ON {TABLE} (chapter);
+CREATE INDEX IF NOT EXISTS {TABLE}_embedded_idx ON {TABLE} (embedded_at);
 
 -- A long section is stored as several chunks, so the section number alone is
 -- not unique. The natural key is the section together with its chunk index.
@@ -312,3 +319,43 @@ def upsert_chunk(
             sql, (section_number, chunk_index, chapter, content, summary, page)
         ).fetchone()
     return bool(row["inserted"])
+
+
+def get_chunks_needing_embedding(
+    settings: Settings | None = None, redo_all: bool = False, limit: int = 0
+) -> list[dict[str, Any]]:
+    """
+    Returns chunks that need (re-)embedding: never embedded, or edited since
+    they were last embedded. redo_all=True returns every chunk instead,
+    still ordered by id for a stable, resumable run order.
+    """
+    where = "" if redo_all else "WHERE embedded_at IS NULL OR updated_at > embedded_at"
+    sql = (
+        f"SELECT id, section_number, chunk_index, chapter, content, summary, page "
+        f"FROM {TABLE} {where} ORDER BY id"
+    )
+    if limit:
+        sql += f" LIMIT {int(limit)}"
+    with connect(settings) as conn:
+        return conn.execute(sql + ";").fetchall()
+
+
+def count_embedded(settings: Settings | None = None) -> int:
+    """How many rows are currently marked embedded (embedded_at is set and up to date)."""
+    sql = f"SELECT COUNT(*) AS n FROM {TABLE} WHERE embedded_at IS NOT NULL AND embedded_at >= updated_at;"
+    with connect(settings) as conn:
+        return int(conn.execute(sql).fetchone()["n"])
+
+
+def mark_embedded(ids: Sequence[int], settings: Settings | None = None) -> None:
+    """
+    Records that these rows are now in the vector index. Called only after
+    Pinecone confirms the upsert, so an interrupted run leaves rows unmarked
+    and the next run picks them up again — marking first could silently lose
+    rows if the upsert itself then failed.
+    """
+    if not ids:
+        return
+    sql = f"UPDATE {TABLE} SET embedded_at = now() WHERE id = ANY(%s);"
+    with connect(settings) as conn:
+        conn.execute(sql, (list(ids),))

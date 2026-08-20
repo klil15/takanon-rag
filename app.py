@@ -1,11 +1,13 @@
 """
 מערכת התקנון — אפליקציית Streamlit.
 
-שתי כרטיסיות:
+שלוש כרטיסיות:
   · "מצב המערכת" — מראה אם החיבורים לענן (Neon, Pinecone) עובדים, ואם
     מפתח ה-Gemini קיים בקובץ ה-.env.
   · "צ'אנקים וסט זהב" — סקירה ועריכה של הצ'אנקים בטבלת takanon_sections,
     ובניית סט הזהב לשאלות ההערכה.
+  · "הערכת אחזור" — משווה BM25 מול Pinecone על סט הזהב הקיים.
+  · "שאלה חופשית" — עונה על כל שאלה חופשית פעמיים, אחזור סמנטי מול BM25.
 
 עיצוב מכוון: שום בדיקה לא מפילה את האפליקציה. אם שירות לא זמין, או
 שמפתח חסר, מוצג X אדום וטקסט השגיאה — במקום קריסה.
@@ -17,7 +19,9 @@ import streamlit as st
 
 import db
 import tab_chunks
+import tab_free_question
 import tab_gold
+import tab_retrieval_eval
 import vectors
 from config import ENV_PATH, Settings, _load_raw_values
 
@@ -92,7 +96,9 @@ def check_gemini(settings: Settings) -> None:
     status_line("מפתח Gemini", bool(settings.gemini_api_key), "" if settings.gemini_api_key else "חסר בקובץ ה-.env")
 
 
-tab_status, tab_chunks_and_gold = st.tabs(["מצב המערכת", "צ'אנקים וסט זהב"])
+tab_status, tab_chunks_and_gold, tab_eval, tab_free = st.tabs(
+    ["מצב המערכת", "צ'אנקים וסט זהב", "הערכת אחזור", "שאלה חופשית"]
+)
 
 settings = load_raw_settings()
 
@@ -107,3 +113,9 @@ with tab_chunks_and_gold:
         tab_chunks.render(settings)
     with sub_gold:
         tab_gold.render(settings)
+
+with tab_eval:
+    tab_retrieval_eval.render(settings)
+
+with tab_free:
+    tab_free_question.render(settings)

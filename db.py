@@ -230,3 +230,85 @@ def server_version(settings: Settings | None = None) -> str:
     with connect(settings) as conn:
         row = conn.execute("SELECT version() AS v;").fetchone()
     return row["v"]
+
+
+def get_all_chunks(settings: Settings | None = None) -> list[dict[str, Any]]:
+    """
+    Returns every chunk with its row id, for the chunk-review UI.
+
+    The id (not section_number + chunk_index) is what an edit is applied
+    against, so that editing the section number or chunk index itself is
+    still safe — see update_chunk_by_id().
+    """
+    sql = f"SELECT id, {RETURNING_COLS} FROM {TABLE} ORDER BY section_number, chunk_index;"
+    with connect(settings) as conn:
+        return conn.execute(sql).fetchall()
+
+
+def update_chunk_by_id(
+    row_id: int,
+    section_number: str,
+    chunk_index: int,
+    chapter: str | None,
+    content: str,
+    summary: str | None,
+    page: int | None,
+    settings: Settings | None = None,
+) -> dict[str, Any] | None:
+    """
+    Updates one existing row by its id (never inserts). Returns the saved
+    row, or None if no row has that id.
+    """
+    sql = f"""
+        UPDATE {TABLE}
+        SET section_number = %s,
+            chunk_index    = %s,
+            chapter        = %s,
+            content        = %s,
+            summary        = %s,
+            page           = %s,
+            version        = version + 1,
+            updated_at     = now()
+        WHERE id = %s
+        RETURNING id, {RETURNING_COLS};
+    """
+    with connect(settings) as conn:
+        return conn.execute(
+            sql, (section_number, chunk_index, chapter, content, summary, page, row_id)
+        ).fetchone()
+
+
+def upsert_chunk(
+    section_number: str,
+    chunk_index: int,
+    chapter: str | None,
+    content: str,
+    summary: str | None,
+    page: int | None,
+    settings: Settings | None = None,
+) -> bool:
+    """
+    Inserts a new chunk, or updates the existing one with the same
+    (section_number, chunk_index). Returns True if a new row was inserted,
+    False if an existing row was updated.
+
+    Used for loading uploaded chunks (PDF or JSON) — never touches rows
+    outside the given (section_number, chunk_index) key.
+    """
+    sql = f"""
+        INSERT INTO {TABLE} (section_number, chunk_index, chapter, content, summary, page)
+        VALUES (%s, %s, %s, %s, %s, %s)
+        ON CONFLICT (section_number, chunk_index) DO UPDATE
+        SET chapter    = EXCLUDED.chapter,
+            content    = EXCLUDED.content,
+            summary    = EXCLUDED.summary,
+            page       = EXCLUDED.page,
+            version    = {TABLE}.version + 1,
+            updated_at = now()
+        RETURNING (xmax = 0) AS inserted;
+    """
+    with connect(settings) as conn:
+        row = conn.execute(
+            sql, (section_number, chunk_index, chapter, content, summary, page)
+        ).fetchone()
+    return bool(row["inserted"])

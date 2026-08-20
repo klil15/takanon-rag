@@ -1,8 +1,11 @@
 """
 מערכת התקנון — אפליקציית Streamlit.
 
-כרגע יש כרטיסייה אחת בלבד: "מצב המערכת", שמראה אם החיבורים לענן
-(Neon, Pinecone) עובדים, ואם מפתח ה-Gemini קיים בקובץ ה-.env.
+שתי כרטיסיות:
+  · "מצב המערכת" — מראה אם החיבורים לענן (Neon, Pinecone) עובדים, ואם
+    מפתח ה-Gemini קיים בקובץ ה-.env.
+  · "צ'אנקים וסט זהב" — סקירה ועריכה של הצ'אנקים בטבלת takanon_sections,
+    ובניית סט הזהב לשאלות ההערכה.
 
 עיצוב מכוון: שום בדיקה לא מפילה את האפליקציה. אם שירות לא זמין, או
 שמפתח חסר, מוצג X אדום וטקסט השגיאה — במקום קריסה.
@@ -13,6 +16,8 @@ from __future__ import annotations
 import streamlit as st
 
 import db
+import tab_chunks
+import tab_gold
 import vectors
 from config import ENV_PATH, Settings, _load_raw_values
 
@@ -87,10 +92,18 @@ def check_gemini(settings: Settings) -> None:
     status_line("מפתח Gemini", bool(settings.gemini_api_key), "" if settings.gemini_api_key else "חסר בקובץ ה-.env")
 
 
-(tab_status,) = st.tabs(["מצב המערכת"])
+tab_status, tab_chunks_and_gold = st.tabs(["מצב המערכת", "צ'אנקים וסט זהב"])
+
+settings = load_raw_settings()
 
 with tab_status:
-    settings = load_raw_settings()
     check_neon(settings)
     check_pinecone(settings)
     check_gemini(settings)
+
+with tab_chunks_and_gold:
+    sub_chunks, sub_gold = st.tabs(["סקירת צ'אנקים", "בניית סט הזהב"])
+    with sub_chunks:
+        tab_chunks.render(settings)
+    with sub_gold:
+        tab_gold.render(settings)
